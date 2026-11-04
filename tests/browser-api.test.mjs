@@ -73,3 +73,75 @@ it('sendMessage rejects non-string input before interacting with the page', asyn
     assert.deepEqual(calls, [])
   })
 })
+
+async function withSelectModel({ pickerVisible = true, submenu = false, selectionError } = {}, verify) {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-model-api-'))
+  const calls = []
+  const exposed = new Map()
+  let selector
+  const picker = {
+    last() { return this },
+    async waitFor() { if (!pickerVisible) throw new Error('legacy UI') },
+    async click() { calls.push('open-picker') },
+    locator(value) {
+      assert.equal(value, '[data-provider-id="sim-openai-completions"][data-model-id="test-model"]')
+      return { async waitFor() { calls.push('confirm-selection') } }
+    },
+  }
+  const option = {
+    async isVisible() { return !submenu },
+    async click() {
+      calls.push('select-option')
+      if (selectionError) throw selectionError
+    },
+  }
+  const modelMenu = {
+    first() { return this },
+    async count() { return submenu ? 1 : 0 },
+    async click() { calls.push('open-model-submenu') },
+  }
+  const page = {
+    async exposeFunction(name, callback) { exposed.set(name, callback) },
+    getByRole(role) { return role === 'button' ? picker : modelMenu },
+    locator(value) { selector = value; return option },
+    async evaluate(_callback, selection) {
+      calls.push(['legacy-rpc', selection])
+      return { value: selection }
+    },
+  }
+  try {
+    await installBrowserApi(page, { screenshotsDir: directory })
+    await verify(exposed.get('selectModel'), calls, () => selector)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
+it('selectModel targets the visible conversation and waits for its selected model', async () => {
+  await withSelectModel({}, async (select, calls, selector) => {
+    await select('sim-openai-completions/test-model')
+    assert.deepEqual(calls, ['open-picker', 'select-option', 'confirm-selection'])
+    assert.equal(selector(), '[role="menuitemradio"]:has([data-provider-id="sim-openai-completions"][data-model-id="test-model"])')
+  })
+})
+
+it('selectModel opens the model submenu when a model was previously selected', async () => {
+  await withSelectModel({ submenu: true }, async (select, calls) => {
+    await select('sim-openai-completions/test-model')
+    assert.deepEqual(calls, ['open-picker', 'open-model-submenu', 'select-option', 'confirm-selection'])
+  })
+})
+
+it('selectModel retains RPC support only when the visible picker is absent', async () => {
+  await withSelectModel({ pickerVisible: false }, async (select, calls) => {
+    await select('sim-openai-completions/test-model')
+    assert.deepEqual(calls, [['legacy-rpc', { provider: 'sim-openai-completions', model: 'test-model' }]])
+  })
+})
+
+it('selectModel does not silently select another session when UI selection fails', async () => {
+  await withSelectModel({ selectionError: new Error('model unavailable') }, async (select, calls) => {
+    await assert.rejects(select('sim-openai-completions/test-model'), /model unavailable/u)
+    assert.deepEqual(calls, ['open-picker', 'select-option'])
+  })
+})

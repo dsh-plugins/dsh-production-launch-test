@@ -122,6 +122,28 @@ export async function installBrowserApi(page: import('playwright-core').Page, { 
     const slash = spec.indexOf('/')
     const provider = spec.slice(0, slash)
     const model = spec.slice(slash + 1)
+    // Select in the visible conversation. session/list's first entry can be a
+    // different session while the UI is creating or switching conversations.
+    const picker = page.getByRole('button', {
+      name: /^(?:请选择模型|选择模型，|正在加载模型|Select model|Loading models)/u,
+    }).last()
+    const pickerVisible = await picker.waitFor({ state: 'visible', timeout: 3000 })
+      .then(() => true).catch(() => false)
+    if (pickerVisible) {
+      await picker.click({ timeout: 10_000 })
+      const modelLabel = `[data-provider-id=${JSON.stringify(provider)}][data-model-id=${JSON.stringify(model)}]`
+      const option = page.locator(`[role="menuitemradio"]:has(${modelLabel})`)
+      if (!await option.isVisible()) {
+        // An already-selected model opens the model/effort submenu first.
+        const modelMenu = page.getByRole('menuitem', { name: /^(?:模型|Model)(?:\s|$)/u }).first()
+        if (await modelMenu.count() > 0) await modelMenu.click({ timeout: 10_000 })
+      }
+      await option.click({ timeout: 10_000 })
+      await picker.locator(modelLabel).waitFor({ state: 'visible', timeout: 10_000 })
+      log(`selectModel("${spec}") 已选择（当前会话 UI）`)
+      return true
+    }
+    // Older DSH versions have no accessible model picker: retain the RPC path.
     const result = await page.evaluate(async ({ provider, model }) => {
       async function rpc(endpoint: string, args: Record<string, unknown>) {
         const response = await fetch(`/api/${endpoint}`, {
