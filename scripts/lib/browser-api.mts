@@ -64,7 +64,15 @@ export async function installBrowserApi(page: import('playwright-core').Page, { 
     try {
       await composer.click({ timeout: 3000 })
       await composer.fill(text)
-      await composer.press('Enter')
+      // Newer DSH composers can consume Enter while their editor/model state settles.
+      // Clicking the real send control waits for it to become enabled and avoids IME races.
+      const sendButton = page.getByRole('button', { name: /^(?:发送消息|Send message)$/u }).last()
+      if (await sendButton.count() > 0) {
+        await sendButton.click({ timeout: 10_000 })
+      } else {
+        // Older DSH versions do not expose a named send control.
+        await composer.press('Enter')
+      }
       log(`sendMessage(${JSON.stringify(text)}) 已提交（UI 输入框）`)
       return true
     } catch {

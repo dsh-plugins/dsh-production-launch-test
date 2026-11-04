@@ -110,6 +110,9 @@ export async function runInChrome({
           timeoutPromise,
         ])
         if (result !== null) log(`用户脚本返回：${JSON.stringify(result)}`)
+      } catch (error) {
+        await page.screenshot({ path: `${screenshotsDir}/98-failure.png` }).catch(() => {})
+        throw error
       } finally {
         clearTimeout(timeout)
       }

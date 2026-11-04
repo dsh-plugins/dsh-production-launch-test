@@ -59,5 +59,8 @@ jobs:
             await sendMessage('测试');
             await waitFor('工具结果已收到', 30000);
             await screenshot('reply');
+            // 0.2.x 将设置入口移到了侧栏底部的账号菜单。
+            await click('账号菜单');
             await click('设置');
+            await waitFor('通用');
             await screenshot('settings');
