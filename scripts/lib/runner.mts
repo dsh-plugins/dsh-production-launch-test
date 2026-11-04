@@ -1,18 +1,18 @@
 /**
  * runner — 桌面 Chrome 驱动与用户脚本执行。
  *
- * 桌面环境由 env.mjs 的预检保证，因此 Chrome 一律有头运行
+ * 桌面环境由 env.mts 的预检保证，因此 Chrome 一律有头运行
  * （DSH_PLT_HEADLESS=1 仅供本地调试覆盖）。
  */
 
 import { chromium } from 'playwright-core'
-import { ensureSession, installBrowserApi } from './browser-api.mjs'
-import { mapLocale } from './env.mjs'
+import { ensureSession, installBrowserApi } from './browser-api.mts'
+import { mapLocale } from './env.mts'
 
 const HEADLESS = process.env.DSH_PLT_HEADLESS === '1'
 
 /** 预检：确认能拉起系统 Chrome（headed），失败时给出可读报错。 */
-export async function preflightChrome(log = () => {}) {
+export async function preflightChrome(log: (line: string) => void = () => {}) {
   try {
     const browser = await chromium.launch({ channel: 'chrome', headless: true })
     const version = browser.version()
@@ -40,7 +40,7 @@ export async function runInChrome({
   timeoutSeconds,
   consoleLog,
   log = () => {},
-}) {
+}: { webUrl: string, lang: string, userScript: string,   artifactsDir: string, timeoutSeconds: number,   consoleLog: (line: string) => void, log?: (line: string) => void }) {
   const { chromeLocale } = mapLocale(lang)
   const browser = await chromium.launch({ channel: 'chrome', headless: HEADLESS })
   const screenshotsDir = `${artifactsDir}/screenshots`

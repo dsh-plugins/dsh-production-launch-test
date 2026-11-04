@@ -217,11 +217,12 @@ provider 路由（`sim-<协议>`），暴露模型 `test-model`，因此可以�
 
 ```bash
 npm ci
+npm run check     # 严格 TypeScript 类型检查 + 全部测试
 npm test          # node:test 单元测试 + simulated-llm HTTP 集成测试
 ```
 
-目录结构：`action.yml`（composite 契约）、`scripts/main.mjs`（编排器）、
-`scripts/lib/*.mjs`（env / install / plugins / simulated-llm / runner / browser-api /
+目录结构：`action.yml`（composite 契约）、`scripts/main.mts`（编排器）、
+`scripts/lib/*.mts`（env / install / plugins / simulated-llm / runner / browser-api /
 logs / upload）、`tests/`、`.github/workflows/self-test.yml`（狗食矩阵）、
 `examples/basic.yml`。
 
@@ -233,7 +234,11 @@ INPUT_SIMULATED_LLM=all \
 INPUT_PLUGINS='@dsh-plugin/dsh-loader' \
 INPUT_USER_SCRIPT='await screenshot("home");' \
 DSH_PLT_HEADLESS=1 \
-node scripts/main.mjs
+node scripts/main.mts
 ```
 
 `DSH_PLT_HEADLESS=1` 是调试开关；action 正常一律有头运行——这正是桌面环境检测所保证的。
+
+### TypeScript 运行时
+
+运行源码使用 `.mts`（TypeScript ESM），由 Node 原生擦除类型后直接执行，无需构建步骤或运行时加载器。Node 版本要求仍为 `^22.19.0 || >=24.0.0`。TypeScript 和 Node 类型仅作为开发依赖；`npm run typecheck` 单独检查类型，`npm run check` 同时检查类型与测试。CI 覆盖 Windows、macOS、Linux 上的 Node 22.19.0 和 24。

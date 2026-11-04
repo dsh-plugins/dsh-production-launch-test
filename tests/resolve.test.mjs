@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { tgzToPackageName } from '../scripts/lib/dsh-source.mjs'
-import { mergeDshVersions, pickPluginVersion } from '../scripts/lib/resolve.mjs'
-import { compareSemver, parseSemver, sortSemver } from '../scripts/lib/semver.mjs'
+import { tgzToPackageName } from '../scripts/lib/dsh-source.mts'
+import { mergeDshVersions, pickPluginVersion } from '../scripts/lib/resolve.mts'
+import { compareSemver, parseSemver, sortSemver } from '../scripts/lib/semver.mts'
 
 describe('semver', () => {
   it('解析核心段与预发布', () => {

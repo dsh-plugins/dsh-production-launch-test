@@ -2,7 +2,7 @@
  * env — 输入解析、桌面环境检测与工具链预检。
  */
 
-import { run } from './proc.mjs'
+import { run } from './proc.mts'
 
 /**
  * Linux 上确保中文字体可用（zh 系 lang 时）：缺失则尝试安装 fonts-noto-cjk，
@@ -10,7 +10,7 @@ import { run } from './proc.mjs'
  * @param {string} lang
  * @param {(line: string) => void} log
  */
-export async function ensureCjkFonts(lang, log) {
+export async function ensureCjkFonts(lang: string, log: (line: string) => void) {
   if (process.platform !== 'linux' || !/^zh/iu.test(String(lang ?? ''))) return
   const probe = await run('fc-list', [':lang=zh', 'family'], { log, allowFailure: true })
   if (probe.code === 0 && probe.stdout.trim() !== '') {
@@ -39,7 +39,7 @@ export async function ensureCjkFonts(lang, log) {
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {{ ok: boolean, reason?: string }}
  */
-export function detectDesktop(platform = process.platform, env = process.env) {
+export function detectDesktop(platform: string = process.platform, env: NodeJS.ProcessEnv = process.env): { ok: boolean, reason?: string } {
   if (platform === 'win32' || platform === 'darwin') return { ok: true }
   if (platform === 'linux') {
     const display = env.DISPLAY ?? ''
@@ -63,7 +63,7 @@ export function detectDesktop(platform = process.platform, env = process.env) {
  * @param {string} lang
  * @returns {{ dshLocale?: 'zh' | 'en', chromeLocale: string }}
  */
-export function mapLocale(lang) {
+export function mapLocale(lang: string): { dshLocale?: 'zh' | 'en', chromeLocale: string } {
   const chromeLocale = String(lang ?? '').trim() || 'zh-CN'
   if (/^zh(?:-|$)/iu.test(chromeLocale)) return { dshLocale: 'zh', chromeLocale }
   if (/^en(?:-|$)/iu.test(chromeLocale)) return { dshLocale: 'en', chromeLocale }
@@ -83,7 +83,7 @@ export function nodeVersionOk(version = process.version) {
  * 读取并校验 action 输入（经环境变量透传）。
  * @param {NodeJS.ProcessEnv} [env]
  */
-export function readInputs(env = process.env) {
+export function readInputs(env: NodeJS.ProcessEnv = process.env) {
   const dshVersion = (env.INPUT_DSH_VERSION ?? '').trim()
   if (dshVersion === '') {
     throw new Error('缺少必填输入 dsh-version（例如 0.1.3-alpha.1）')

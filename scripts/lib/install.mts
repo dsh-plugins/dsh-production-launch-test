@@ -12,7 +12,7 @@ import { existsSync } from 'node:fs'
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
-import { binOf, killTree, run } from './proc.mjs'
+import { binOf, killTree, run } from './proc.mts'
 
 /** pnpm 11.17 需要的构建脚本白名单（本地依赖 esbuild/koffi/node-pty 等原生构建）。 */
 const ALLOW_BUILDS = [
@@ -39,7 +39,7 @@ function pnpmWorkspaceYaml({ forProfile = false } = {}) {
 }
 
 /** UTF-8 无 BOM 写入（Windows PowerShell 的 Set-Content -Encoding UTF8 会带 BOM，这里用 Node 写天然无 BOM）。 */
-async function writeText(path, content) {
+async function writeText(path: string, content: string) {
   await writeFile(path, content, 'utf8')
 }
 
@@ -49,7 +49,7 @@ async function writeText(path, content) {
  * 自动改为从源码构建安装（clone dsh-v<version> → build:official → release:pack）。
  * @param {{ version: string, rootDir: string, token?: string, log: (line: string) => void }} options
  */
-export async function installDsh({ version, rootDir, token = '', log }) {
+export async function installDsh({ version, rootDir, token = '', log }: { version: string, rootDir: string, token?: string, log: (line: string) => void }) {
   // 源码构建过的版本落在 versions/src-<ver>，先查复用
   const srcBin = join(rootDir, 'versions', `src-${version}`, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
   if (existsSync(srcBin)) {
@@ -58,7 +58,7 @@ export async function installDsh({ version, rootDir, token = '', log }) {
   }
   if (!await npmHasVersion(version)) {
     log(`npm 上不存在 @deepseek-ai/dsh@${version}，自动从源码构建（GitHub Releases 独占版本）…`)
-    const { installDshFromSource } = await import('./dsh-source.mjs')
+    const { installDshFromSource } = await import('./dsh-source.mts')
     return await installDshFromSource({ version, rootDir, token, log })
   }
   const versionDir = join(rootDir, 'versions', version)
@@ -100,7 +100,7 @@ export async function installDsh({ version, rootDir, token = '', log }) {
 }
 
 /** 探测 npm 上是否存在该版本（网络异常时按存在处理，交给 pnpm 报错）。 */
-async function npmHasVersion(version) {
+async function npmHasVersion(version: string) {
   try {
     // 注意：per-version 端点不支持 application/vnd.npm.install-v1+json（会 406），勿加该头
     const response = await fetch(`https://registry.npmjs.org/@deepseek-ai/dsh/${version}`)
@@ -115,7 +115,7 @@ async function npmHasVersion(version) {
  * @param {{ bin: string, profile: string, homeDir: string, extraEnv?: NodeJS.ProcessEnv,
  *   log: (line: string) => void, readyTimeoutMs?: number }} options
  */
-export function spawnDsh({ bin, profile, homeDir, extraEnv = {}, log, readyTimeoutMs = 90_000 }) {
+export function spawnDsh({ bin, profile, homeDir, extraEnv = {}, log, readyTimeoutMs = 90_000 }: { bin: string, profile: string, homeDir: string, extraEnv?: NodeJS.ProcessEnv,   log: (line: string) => void, readyTimeoutMs?: number }) {
   const args = [bin, '--profile', profile, '--host', '127.0.0.1', '--port', '0', '--no-open']
   log(`$ node ${args.join(' ')}`)
   const child = spawn(process.execPath, args, {
@@ -129,12 +129,12 @@ export function spawnDsh({ bin, profile, homeDir, extraEnv = {}, log, readyTimeo
     windowsHide: true,
   })
   let settled = false
-  const ready = new Promise((resolve, reject) => {
+  const ready = new Promise<string>((resolve, reject) => {
     let buffer = ''
     const timer = setTimeout(() => {
       if (!settled) reject(new Error(`dsh 启动超时（${readyTimeoutMs / 1000}s）未见就绪行`))
     }, readyTimeoutMs)
-    const onData = chunk => {
+    const onData = (chunk: Buffer) => {
       const text = chunk.toString()
       for (const line of text.split(/\r?\n/u)) {
         if (line !== '') log(line)
@@ -166,7 +166,7 @@ export function spawnDsh({ bin, profile, homeDir, extraEnv = {}, log, readyTimeo
  * @param {{ bin: string, homeDir: string, profile: string, log: (line: string) => void }} options
  * @returns {Promise<string>} 测试 profile 目录
  */
-export async function prepareProfile({ bin, homeDir, profile, log }) {
+export async function prepareProfile({ bin, homeDir, profile, log }: { bin: string, homeDir: string, profile: string, log: (line: string) => void }): Promise<string> {
   const webDir = join(homeDir, 'profiles', 'web')
   const profileDir = join(homeDir, 'profiles', profile)
   if (!existsSync(webDir)) {
@@ -202,7 +202,7 @@ export async function prepareProfile({ bin, homeDir, profile, log }) {
  * @param {string} settingsPath
  * @param {Record<string, unknown>} sections - 顶层键 → 段落对象
  */
-export async function mergeSettingsYaml(settingsPath, sections) {
+export async function mergeSettingsYaml(settingsPath: string, sections: Record<string, unknown>) {
   const existing = existsSync(settingsPath) ? await readFile(settingsPath, 'utf8') : ''
   const keys = Object.keys(sections)
   // 按顶层键切块：顶层行 = 无缩进且以冒号结尾
@@ -222,7 +222,7 @@ export async function mergeSettingsYaml(settingsPath, sections) {
 }
 
 /** 极简 YAML 序列化（仅覆盖本 action 生成的对象/数组/标量结构）。 */
-function toYaml(value, indent = 0) {
+function toYaml(value: unknown, indent = 0): string {
   const pad = '  '.repeat(indent)
   if (Array.isArray(value)) {
     return value.map(item => {
@@ -246,7 +246,7 @@ function toYaml(value, indent = 0) {
   return `${pad}${scalar(value)}`
 }
 
-function scalar(value) {
+function scalar(value: unknown) {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   const text = String(value)
   if (/[:#\n"']|^\s|\s$|^[-?@`]|\b/u.test(text) || text === '') {

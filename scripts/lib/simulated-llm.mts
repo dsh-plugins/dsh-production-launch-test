@@ -1,3 +1,22 @@
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
+
+type RequestProfile = {
+  hasToolResult: boolean
+  hasTools: boolean
+  toolCalled: boolean
+  imageCount: number
+  lastUserText: string
+}
+type Outcome = { kind: 'tool-call', toolName: string, toolArgs: object }
+  | { kind: 'text', text: string, rule: string }
+type TextOutcome = Extract<Outcome, { kind: 'text' }>
+type SseEvent = [string | null, Record<string, unknown>]
+type Provider = {
+  displayName: string, api: string, baseURL: string, apiKeyEnv: string,
+  models: { id: string, name: string, contextWindow: number, maxTokens: number, input: string[] }[]
+}
+
 /**
  * simulated-llm — 固定输入匹配固定输出的模拟 LLM 服务。
  *
@@ -30,7 +49,7 @@ export const SIM_API_KEY_ENV = 'DSH_SIM_LLM_API_KEY'
  * @param {string} input - 'true' | 'all' | 'false' | 空格分隔的协议列表
  * @returns {string[] | null} 协议数组；false/空 → null
  */
-export function parseSimulatedLlmSpec(input) {
+export function parseSimulatedLlmSpec(input: string): string[] | null {
   const raw = String(input ?? '').trim()
   if (raw === '' || raw === 'false') return null
   if (raw === 'true' || raw === 'all') return [...PROTOCOLS]
@@ -44,7 +63,7 @@ export function parseSimulatedLlmSpec(input) {
 }
 
 /** 协议 → DSH provider 路由名。 */
-export function providerRouteOf(protocol) {
+export function providerRouteOf(protocol: string) {
   return `sim-${protocol}`
 }
 
@@ -53,8 +72,8 @@ export function providerRouteOf(protocol) {
  * @param {string[]} protocols
  * @param {string} baseURL - 模拟服务地址（http://127.0.0.1:<port>/v1）
  */
-export function providerSettings(protocols, baseURL) {
-  const providers = {}
+export function providerSettings(protocols: string[], baseURL: string) {
+  const providers: Record<string, Provider> = {}
   for (const protocol of protocols) {
     providers[providerRouteOf(protocol)] = {
       displayName: `Simulated ${protocol}`,
@@ -77,11 +96,11 @@ export function providerSettings(protocols, baseURL) {
 /* 请求特征提取：三种协议归一化为同一份“请求画像”                        */
 /* ------------------------------------------------------------------ */
 
-function isRecord(value) {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function textOfContent(content) {
+function textOfContent(content: unknown): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
     return content
@@ -92,7 +111,7 @@ function textOfContent(content) {
   return ''
 }
 
-function countImages(content) {
+function countImages(content: unknown) {
   if (!Array.isArray(content)) return 0
   return content.filter(part => isRecord(part)
     && (part.type === 'image_url' || part.type === 'image' || part.type === 'input_image')).length
@@ -102,7 +121,7 @@ function countImages(content) {
  * @returns {{ hasToolResult: boolean, hasTools: boolean, toolCalled: boolean,
  *   imageCount: number, lastUserText: string }}
  */
-function analyzeOpenAICompletions(body) {
+function analyzeOpenAICompletions(body: Record<string, unknown>): { hasToolResult: boolean, hasTools: boolean, toolCalled: boolean,   imageCount: number, lastUserText: string } {
   const messages = Array.isArray(body.messages) ? body.messages : []
   let hasToolResult = false
   let toolCalled = false
@@ -121,7 +140,7 @@ function analyzeOpenAICompletions(body) {
   return { hasToolResult, hasTools: Array.isArray(body.tools) && body.tools.length > 0, toolCalled, imageCount, lastUserText }
 }
 
-function analyzeOpenAIResponses(body) {
+function analyzeOpenAIResponses(body: Record<string, unknown>) {
   const input = Array.isArray(body.input) ? body.input : []
   let hasToolResult = false
   let toolCalled = false
@@ -140,7 +159,7 @@ function analyzeOpenAIResponses(body) {
   return { hasToolResult, hasTools: Array.isArray(body.tools) && body.tools.length > 0, toolCalled, imageCount, lastUserText }
 }
 
-function analyzeAnthropicMessages(body) {
+function analyzeAnthropicMessages(body: Record<string, unknown>) {
   const messages = Array.isArray(body.messages) ? body.messages : []
   let hasToolResult = false
   let toolCalled = false
@@ -166,7 +185,7 @@ function analyzeAnthropicMessages(body) {
   return { hasToolResult, hasTools: Array.isArray(body.tools) && body.tools.length > 0, toolCalled, imageCount, lastUserText }
 }
 
-const ANALYZERS = {
+const ANALYZERS: Record<string, (body: Record<string, unknown>) => RequestProfile> = {
   'openai-completions': analyzeOpenAICompletions,
   'openai-responses': analyzeOpenAIResponses,
   'anthropic-messages': analyzeAnthropicMessages,
@@ -177,7 +196,7 @@ const ANALYZERS = {
  * @returns {{ kind: 'tool-call', toolName: string, toolArgs: object }
  *   | { kind: 'text', text: string, rule: string }}
  */
-export function matchRule(profile) {
+export function matchRule(profile: RequestProfile): { kind: 'tool-call', toolName: string, toolArgs: object }   | { kind: 'text', text: string, rule: string } {
   if (profile.hasToolResult) {
     return { kind: 'text', text: '工具结果已收到，任务完成。', rule: 'tool-result' }
   }
@@ -201,7 +220,7 @@ export function matchRule(profile) {
 
 const USAGE = { prompt_tokens: 42, completion_tokens: 24, total_tokens: 66 }
 
-function completionPayload(model, outcome) {
+function completionPayload(model: string, outcome: Outcome) {
   const message = outcome.kind === 'tool-call'
     ? {
         role: 'assistant',
@@ -227,7 +246,7 @@ function completionPayload(model, outcome) {
   }
 }
 
-function writeSse(res, events, done = true) {
+function writeSse(res: ServerResponse, events: SseEvent[], done = true) {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -241,14 +260,14 @@ function writeSse(res, events, done = true) {
   res.end()
 }
 
-function respondCompletions(res, model, outcome, stream) {
+function respondCompletions(res: ServerResponse, model: string, outcome: Outcome, stream: boolean) {
   if (!stream) {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify(completionPayload(model, outcome)))
     return
   }
   const chunkBase = { id: 'chatcmpl-sim', object: 'chat.completion.chunk', created: 1700000000, model }
-  const events = []
+  const events: SseEvent[] = []
   if (outcome.kind === 'tool-call') {
     events.push([null, { ...chunkBase, choices: [{ index: 0, delta: { role: 'assistant', content: null, tool_calls: [{ index: 0, id: 'call_sim_1', type: 'function', function: { name: outcome.toolName, arguments: '' } }] }, finish_reason: null }] }])
     events.push([null, { ...chunkBase, choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify(outcome.toolArgs) } }] }, finish_reason: null }] }])
@@ -263,17 +282,17 @@ function respondCompletions(res, model, outcome, stream) {
   writeSse(res, events)
 }
 
-function splitText(text) {
+function splitText(text: string) {
   // 按小段切分以模拟流式输出
   const pieces = []
   for (let i = 0; i < text.length; i += 8) pieces.push(text.slice(i, i + 8))
   return pieces.length > 0 ? pieces : ['']
 }
 
-function responsesOutputItem(outcome) {
+function responsesOutputItem(outcome: Outcome) {
   if (outcome.kind === 'tool-call') {
     return {
-      type: 'function_call',
+      type: 'function_call' as const,
       id: 'fc_sim_1',
       call_id: 'call_sim_1',
       name: outcome.toolName,
@@ -282,7 +301,7 @@ function responsesOutputItem(outcome) {
     }
   }
   return {
-    type: 'message',
+    type: 'message' as const,
     id: 'msg_sim_1',
     role: 'assistant',
     status: 'completed',
@@ -290,7 +309,7 @@ function responsesOutputItem(outcome) {
   }
 }
 
-function responsesEnvelope(model, outcome) {
+function responsesEnvelope(model: string, outcome: Outcome) {
   const item = responsesOutputItem(outcome)
   return {
     id: 'resp_sim_1',
@@ -303,7 +322,7 @@ function responsesEnvelope(model, outcome) {
   }
 }
 
-function respondResponses(res, model, outcome, stream) {
+function respondResponses(res: ServerResponse, model: string, outcome: Outcome, stream: boolean) {
   if (!stream) {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify(responsesEnvelope(model, outcome)))
@@ -311,7 +330,7 @@ function respondResponses(res, model, outcome, stream) {
   }
   const envelope = responsesEnvelope(model, outcome)
   const item = envelope.output[0]
-  const events = [
+  const events: SseEvent[] = [
     ['response.created', { type: 'response.created', response: { ...envelope, output: [], status: 'in_progress' } }],
     ['response.output_item.added', { type: 'response.output_item.added', output_index: 0, item: { ...item, status: 'in_progress', ...(item.type === 'function_call' ? { arguments: '' } : { content: [] }) } }],
   ]
@@ -319,20 +338,20 @@ function respondResponses(res, model, outcome, stream) {
     events.push(['response.function_call_arguments.delta', { type: 'response.function_call_arguments.delta', output_index: 0, item_id: item.id, delta: item.arguments }])
     events.push(['response.function_call_arguments.done', { type: 'response.function_call_arguments.done', output_index: 0, item_id: item.id, arguments: item.arguments }])
   } else {
-    for (const piece of splitText(outcome.text)) {
+    for (const piece of splitText((outcome as TextOutcome).text)) {
       events.push(['response.output_text.delta', { type: 'response.output_text.delta', output_index: 0, item_id: item.id, content_index: 0, delta: piece }])
     }
-    events.push(['response.output_text.done', { type: 'response.output_text.done', output_index: 0, item_id: item.id, content_index: 0, text: outcome.text }])
+    events.push(['response.output_text.done', { type: 'response.output_text.done', output_index: 0, item_id: item.id, content_index: 0, text: (outcome as TextOutcome).text }])
   }
   events.push(['response.output_item.done', { type: 'response.output_item.done', output_index: 0, item }])
   events.push(['response.completed', { type: 'response.completed', response: envelope }])
   writeSse(res, events, false)
 }
 
-function anthropicPayload(model, outcome) {
+function anthropicPayload(model: string, outcome: Outcome) {
   const content = outcome.kind === 'tool-call'
-    ? [{ type: 'tool_use', id: 'toolu_sim_1', name: outcome.toolName, input: outcome.toolArgs }]
-    : [{ type: 'text', text: outcome.text }]
+    ? [{ type: 'tool_use' as const, id: 'toolu_sim_1', name: outcome.toolName, input: outcome.toolArgs }]
+    : [{ type: 'text' as const, text: outcome.text }]
   return {
     id: 'msg_sim_1',
     type: 'message',
@@ -344,7 +363,7 @@ function anthropicPayload(model, outcome) {
   }
 }
 
-function respondAnthropic(res, model, outcome, stream) {
+function respondAnthropic(res: ServerResponse, model: string, outcome: Outcome, stream: boolean) {
   if (!stream) {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify(anthropicPayload(model, outcome)))
@@ -352,7 +371,7 @@ function respondAnthropic(res, model, outcome, stream) {
   }
   const payload = anthropicPayload(model, outcome)
   const block = payload.content[0]
-  const events = [
+  const events: SseEvent[] = [
     ['message_start', { type: 'message_start', message: { ...payload, content: [], stop_reason: null } }],
   ]
   if (block.type === 'tool_use') {
@@ -361,7 +380,7 @@ function respondAnthropic(res, model, outcome, stream) {
     events.push(['content_block_stop', { type: 'content_block_stop', index: 0 }])
   } else {
     events.push(['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }])
-    for (const piece of splitText(outcome.text)) {
+    for (const piece of splitText((outcome as TextOutcome).text)) {
       events.push(['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: piece } }])
     }
     events.push(['content_block_stop', { type: 'content_block_stop', index: 0 }])
@@ -377,10 +396,10 @@ const ROUTES = [
   { protocol: 'anthropic-messages', method: 'POST', path: '/v1/messages', respond: respondAnthropic },
 ]
 
-function readBody(req) {
+function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
-    const chunks = []
-    req.on('data', chunk => chunks.push(chunk))
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
     req.on('error', reject)
   })
@@ -391,7 +410,7 @@ function readBody(req) {
  * @param {{ protocols: string[], log?: (line: string) => void }} options
  * @returns {Promise<{ port: number, baseURL: string, close: () => Promise<void> }>}
  */
-export async function startSimulatedLlm({ protocols, log = () => {} }) {
+export async function startSimulatedLlm({ protocols, log = () => {} }: { protocols: string[], log?: (line: string) => void }): Promise<{ port: number, baseURL: string, close: () => Promise<void> }> {
   const enabled = new Set(protocols)
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
@@ -433,11 +452,11 @@ export async function startSimulatedLlm({ protocols, log = () => {} }) {
       res.end(JSON.stringify({ error: { message: String(error) } }))
     }
   })
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolve)
   })
-  const { port } = server.address()
+  const { port } = server.address() as AddressInfo
   log(`simulated-llm 已启动：http://127.0.0.1:${port}/v1 协议=[${[...enabled].join(', ')}]`)
   return {
     port,
