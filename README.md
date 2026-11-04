@@ -225,11 +225,18 @@ The action fails when any of these is detected:
 
 ```bash
 npm ci
-npm test          # node:test unit + simulated-llm HTTP integration tests
+npm run check     # strict TypeScript checks + node:test / simulated-llm HTTP integration tests
+npm run typecheck # type checks only
+npm test          # tests only
 ```
 
-Layout: `action.yml` (composite contract), `scripts/main.mjs` (orchestrator),
-`scripts/lib/*.mjs` (env / install / plugins / simulated-llm / runner / browser-api /
+Runtime sources use `.mts` (TypeScript ESM) and run directly with Node’s native
+type stripping. No build step or runtime TypeScript loader is needed. The existing
+Node requirement (`^22.19.0 || >=24.0.0`) is unchanged. TypeScript and Node types
+are development dependencies only. CI checks Node 22.19.0 and 24 on all three OSes.
+
+Layout: `action.yml` (composite contract), `scripts/main.mts` (orchestrator),
+`scripts/lib/*.mts` (env / install / plugins / simulated-llm / runner / browser-api /
 logs / upload), `tests/`, `.github/workflows/self-test.yml` (dogfooding matrix),
 `examples/basic.yml`.
 
@@ -241,7 +248,7 @@ INPUT_SIMULATED_LLM=all \
 INPUT_PLUGINS='@dsh-plugin/dsh-loader' \
 INPUT_USER_SCRIPT='await screenshot("home");' \
 DSH_PLT_HEADLESS=1 \
-node scripts/main.mjs
+node scripts/main.mts
 ```
 
 `DSH_PLT_HEADLESS=1` is a debugging override; the action otherwise always runs headed,

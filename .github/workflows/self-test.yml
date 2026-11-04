@@ -43,7 +43,9 @@ jobs:
       - name: DSH 生产环境启动测试
         uses: ./
         with:
-          dsh-version: 0.1.2-alpha.5
+          # Keep the smoke-test fixture current: alpha.5 now resolves an incompatible
+          # Cordis/HMR dependency combination and exits before browser tests begin.
+          dsh-version: 0.2.1-rc.5
           lang: zh-CN
           simulated-llm: all
           plugins: |
@@ -57,5 +59,8 @@ jobs:
             await sendMessage('测试');
             await waitFor('工具结果已收到', 30000);
             await screenshot('reply');
+            // 0.2.x 将设置入口移到了侧栏底部的账号菜单。
+            await click('账号菜单');
             await click('设置');
+            await waitFor('通用');
             await screenshot('settings');

@@ -1,3 +1,11 @@
+interface Artifact {
+  id: number
+  name: string
+  expired: boolean
+  archive_download_url: string
+  workflow_run?: { id: number }
+}
+
 /**
  * artifact-store — 经 GitHub REST API 下载当前仓库的 artifact。
  *
@@ -12,14 +20,14 @@ import { createWriteStream } from 'node:fs'
 import { mkdir, open, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import { run } from './proc.mjs'
+import { run } from './proc.mts'
 
 /**
  * 按名字下载 artifact 并解压到 destDir，返回 destDir。
  * 优先匹配当前 run（GITHUB_RUN_ID）的 artifact，其次取最新未过期同名 artifact。
  * @param {{ name: string, destDir: string, token: string, log: (line: string) => void }} options
  */
-export async function downloadArtifactByName({ name, destDir, token, log }) {
+export async function downloadArtifactByName({ name, destDir, token, log }: { name: string, destDir: string, token: string, log: (line: string) => void }) {
   const repo = process.env.GITHUB_REPOSITORY
   if (repo === undefined || repo === '') {
     throw new Error(`artifact:${name} 需要 GitHub Actions 环境（GITHUB_REPOSITORY 未设置）`)
@@ -35,7 +43,7 @@ export async function downloadArtifactByName({ name, destDir, token, log }) {
   const listUrl = `https://api.github.com/repos/${repo}/actions/artifacts?per_page=100&name=${encodeURIComponent(name)}`
   const listRes = await fetch(listUrl, { headers })
   if (!listRes.ok) throw new Error(`查询 artifact ${name} 失败：HTTP ${listRes.status}`)
-  const { artifacts = [] } = await listRes.json()
+  const { artifacts = [] } = await listRes.json() as { artifacts?: Artifact[] }
   const candidates = artifacts.filter(a => a.name === name && !a.expired)
   if (candidates.length === 0) {
     throw new Error(`仓库 ${repo} 中找不到未过期的 artifact：${name}`)
@@ -58,7 +66,7 @@ export async function downloadArtifactByName({ name, destDir, token, log }) {
 }
 
 /** 校验下载内容确实是 zip（PK\x03\x04），否则带响应信息报错便于诊断。 */
-async function assertZipMagic(zipPath, response) {
+async function assertZipMagic(zipPath: string, response: Response) {
   const handle = await open(zipPath, 'r')
   try {
     const buf = Buffer.alloc(4)
@@ -73,7 +81,7 @@ async function assertZipMagic(zipPath, response) {
   }
 }
 
-async function extractZip(zipPath, destDir, log) {
+async function extractZip(zipPath: string, destDir: string, log: (line: string) => void) {
   if (process.platform === 'linux') {
     const result = await run('unzip', ['-o', '-q', zipPath, '-d', destDir], { log, allowFailure: true })
     if (result.code === 0) return

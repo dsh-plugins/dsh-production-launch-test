@@ -6,7 +6,7 @@
  * @param {string} version
  * @returns {{ major: number, minor: number, patch: number, pre: string[] } | null}
  */
-export function parseSemver(version) {
+export function parseSemver(version: string): { major: number, minor: number, patch: number, pre: string[] } | null {
   const match = /^(?<core>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<pre>[\w.-]+))?(?:\+[\w.-]+)?$/u
     .exec(String(version).trim())
   if (match?.groups === undefined) return null
@@ -22,11 +22,11 @@ export function parseSemver(version) {
  * 比较两个 semver。a < b → -1，相等 → 0，a > b → 1。
  * 规则：数值段依次比较；无预发布 > 有预发布；预发布标识符数值 < 字母，段数少 < 段数多。
  */
-export function compareSemver(a, b) {
+export function compareSemver(a: string, b: string) {
   const va = parseSemver(a)
   const vb = parseSemver(b)
   if (va === null || vb === null) throw new Error(`非法 semver：${va === null ? a : b}`)
-  for (const key of ['major', 'minor', 'patch']) {
+  for (const key of ['major', 'minor', 'patch'] as const) {
     if (va[key] !== vb[key]) return va[key] < vb[key] ? -1 : 1
   }
   if (va.pre.length === 0 && vb.pre.length === 0) return 0
@@ -53,6 +53,6 @@ export function compareSemver(a, b) {
 }
 
 /** semver 升序排序（原地）。 */
-export function sortSemver(versions) {
+export function sortSemver(versions: string[]) {
   return versions.sort(compareSemver)
 }

@@ -11,7 +11,7 @@ import { dirname } from 'node:path'
  * @param {string} filePath
  * @returns {(line: string) => void}
  */
-export function createLogger(filePath) {
+export function createLogger(filePath: string): (line: string) => void {
   mkdirSync(dirname(filePath), { recursive: true })
   writeFileSync(filePath, '', 'utf8')
   return line => {
@@ -47,9 +47,9 @@ export const WEB_FAILURE_PATTERNS = [
  * @param {{ hostLogPath?: string, webLogPath?: string }} options
  * @returns {string[]}
  */
-export function scanLogs({ hostLogPath, webLogPath }) {
-  const reasons = []
-  const scan = (path, patterns, label) => {
+export function scanLogs({ hostLogPath, webLogPath }: { hostLogPath?: string, webLogPath?: string }): string[] {
+  const reasons: string[] = []
+  const scan = (path: string | undefined, patterns: RegExp[], label: string) => {
     if (path === undefined) return
     let content
     try {

@@ -21,11 +21,11 @@ import { join } from 'node:path'
  * @param {import('playwright-core').Page} page
  * @param {{ screenshotsDir: string, log?: (line: string) => void }} options
  */
-export async function installBrowserApi(page, { screenshotsDir, log = () => {} }) {
+export async function installBrowserApi(page: import('playwright-core').Page, { screenshotsDir, log = () => {} }: { screenshotsDir: string, log?: (line: string) => void }) {
   await mkdir(screenshotsDir, { recursive: true })
   let screenshotSeq = 0
 
-  await page.exposeFunction('click', async (target, opts = {}) => {
+  await page.exposeFunction('click', async (target: unknown, opts: { timeout?: number } = {}) => {
     if (typeof target !== 'string' || target === '') throw new Error('click(text) 需要非空字符串')
     const timeout = Number(opts.timeout ?? 3000)
     // 类名子串兜底：class="kOalmG_close" 这类图标按钮没有文本/aria-label，
@@ -56,7 +56,7 @@ export async function installBrowserApi(page, { screenshotsDir, log = () => {} }
     throw new Error(`click("${target}") 失败：页面上没有找到可点击的匹配元素`)
   })
 
-  await page.exposeFunction('sendMessage', async (text) => {
+  await page.exposeFunction('sendMessage', async (text: unknown) => {
     if (typeof text !== 'string') throw new Error('sendMessage(text) 需要字符串')
     // 优先走 UI 输入框；GUI 停在欢迎页/无可见输入框时回退 session/prompt RPC
     const composer = page.locator(
@@ -64,12 +64,20 @@ export async function installBrowserApi(page, { screenshotsDir, log = () => {} }
     try {
       await composer.click({ timeout: 3000 })
       await composer.fill(text)
-      await composer.press('Enter')
+      // Newer DSH composers can consume Enter while their editor/model state settles.
+      // Clicking the real send control waits for it to become enabled and avoids IME races.
+      const sendButton = page.getByRole('button', { name: /^(?:发送消息|Send message)$/u }).last()
+      if (await sendButton.count() > 0) {
+        await sendButton.click({ timeout: 10_000 })
+      } else {
+        // Older DSH versions do not expose a named send control.
+        await composer.press('Enter')
+      }
       log(`sendMessage(${JSON.stringify(text)}) 已提交（UI 输入框）`)
       return true
     } catch {
       const result = await page.evaluate(async (promptText) => {
-        async function rpc(endpoint, args) {
+        async function rpc(endpoint: string, args: Record<string, unknown>) {
           const response = await fetch(`/api/${endpoint}`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -107,15 +115,37 @@ export async function installBrowserApi(page, { screenshotsDir, log = () => {} }
     }
   })
 
-  await page.exposeFunction('selectModel', async (spec) => {
+  await page.exposeFunction('selectModel', async (spec: unknown) => {
     if (typeof spec !== 'string' || !spec.includes('/')) {
       throw new Error('selectModel("provider/model") 需要 provider/model 形式')
     }
     const slash = spec.indexOf('/')
     const provider = spec.slice(0, slash)
     const model = spec.slice(slash + 1)
+    // Select in the visible conversation. session/list's first entry can be a
+    // different session while the UI is creating or switching conversations.
+    const picker = page.getByRole('button', {
+      name: /^(?:请选择模型|选择模型，|正在加载模型|Select model|Loading models)/u,
+    }).last()
+    const pickerVisible = await picker.waitFor({ state: 'visible', timeout: 3000 })
+      .then(() => true).catch(() => false)
+    if (pickerVisible) {
+      await picker.click({ timeout: 10_000 })
+      const modelLabel = `[data-provider-id=${JSON.stringify(provider)}][data-model-id=${JSON.stringify(model)}]`
+      const option = page.locator(`[role="menuitemradio"]:has(${modelLabel})`)
+      if (!await option.isVisible()) {
+        // An already-selected model opens the model/effort submenu first.
+        const modelMenu = page.getByRole('menuitem', { name: /^(?:模型|Model)(?:\s|$)/u }).first()
+        if (await modelMenu.count() > 0) await modelMenu.click({ timeout: 10_000 })
+      }
+      await option.click({ timeout: 10_000 })
+      await picker.locator(modelLabel).waitFor({ state: 'visible', timeout: 10_000 })
+      log(`selectModel("${spec}") 已选择（当前会话 UI）`)
+      return true
+    }
+    // Older DSH versions have no accessible model picker: retain the RPC path.
     const result = await page.evaluate(async ({ provider, model }) => {
-      async function rpc(endpoint, args) {
+      async function rpc(endpoint: string, args: Record<string, unknown>) {
         const response = await fetch(`/api/${endpoint}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -149,14 +179,14 @@ export async function installBrowserApi(page, { screenshotsDir, log = () => {} }
     return true
   })
 
-  await page.exposeFunction('selectWorkspace', async (dirPath) => {
+  await page.exposeFunction('selectWorkspace', async (dirPath?: unknown) => {
     // 默认目录：系统临时目录下的固定工作区（重复调用幂等——workspace/create 对已注册路径返回原工作区）
     const wsPath = typeof dirPath === 'string' && dirPath !== ''
       ? dirPath
       : join(tmpdir(), 'dsh-plt-workspace')
     await mkdir(wsPath, { recursive: true })
     const result = await page.evaluate(async ({ path }) => {
-      async function rpc(endpoint, args) {
+      async function rpc(endpoint: string, args: Record<string, unknown>) {
         const response = await fetch(`/api/${endpoint}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -187,7 +217,7 @@ export async function installBrowserApi(page, { screenshotsDir, log = () => {} }
     return result
   })
 
-  await page.exposeFunction('screenshot', async (name) => {
+  await page.exposeFunction('screenshot', async (name?: unknown) => {
     screenshotSeq += 1
     const safe = typeof name === 'string' && name !== ''
       ? name.replace(/[^\w.-]+/gu, '-')
@@ -198,14 +228,14 @@ export async function installBrowserApi(page, { screenshotsDir, log = () => {} }
     return file
   })
 
-  await page.exposeFunction('waitFor', async (text, timeoutMs = 15000) => {
+  await page.exposeFunction('waitFor', async (text: unknown, timeoutMs = 15000) => {
     if (typeof text !== 'string' || text === '') throw new Error('waitFor(text) 需要非空字符串')
     await page.getByText(text).first().waitFor({ timeout: Number(timeoutMs) })
     log(`waitFor("${text}") 命中`)
     return true
   })
 
-  await page.exposeFunction('sleep', (ms) =>
+  await page.exposeFunction('sleep', (ms: unknown) =>
     new Promise(resolve => setTimeout(resolve, Number(ms))))
 
   await page.exposeFunction('currentUrl', () => page.url())
@@ -217,7 +247,7 @@ export async function installBrowserApi(page, { screenshotsDir, log = () => {} }
  * @param {import('playwright-core').Page} page
  * @param {string} webUrl
  */
-export async function nodeRpc(page, webUrl, endpoint, args) {
+export async function nodeRpc(page: import('playwright-core').Page, webUrl: string, endpoint: string, args: Record<string, unknown>) {
   const origin = new URL(webUrl).origin
   const cookies = await page.context().cookies(origin)
   const response = await fetch(`${origin}/api/${endpoint}`, {
@@ -247,7 +277,7 @@ export async function nodeRpc(page, webUrl, endpoint, args) {
  * @param {string} webUrl
  * @param {(line: string) => void} [log]
  */
-export async function ensureSession(page, webUrl, log = () => {}) {
+export async function ensureSession(page: import('playwright-core').Page, webUrl: string, log: (line: string) => void = () => {}) {
   let list
   try {
     list = await nodeRpc(page, webUrl, 'session/list', { _request: {} })

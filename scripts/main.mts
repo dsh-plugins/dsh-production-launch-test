@@ -11,22 +11,22 @@ import { existsSync } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { detectDesktop, ensureCjkFonts, mapLocale, nodeVersionOk, readInputs } from './lib/env.mjs'
-import { installDsh, mergeSettingsYaml, prepareProfile, spawnDsh } from './lib/install.mjs'
-import { createLogger, scanLogs } from './lib/logs.mjs'
-import { materializePlugin, parsePluginsInput, readBundles } from './lib/plugins.mjs'
-import { ensurePnpm, run } from './lib/proc.mjs'
-import { preflightChrome, runInChrome } from './lib/runner.mjs'
+import { detectDesktop, ensureCjkFonts, mapLocale, nodeVersionOk, readInputs } from './lib/env.mts'
+import { installDsh, mergeSettingsYaml, prepareProfile, spawnDsh } from './lib/install.mts'
+import { createLogger, scanLogs } from './lib/logs.mts'
+import { materializePlugin, parsePluginsInput, readBundles } from './lib/plugins.mts'
+import { ensurePnpm, run } from './lib/proc.mts'
+import { preflightChrome, runInChrome } from './lib/runner.mts'
 import {
   providerSettings,
   SIM_API_KEY_ENV,
   parseSimulatedLlmSpec,
   startSimulatedLlm,
-} from './lib/simulated-llm.mjs'
-import { writeOutputs, writeSummary } from './lib/upload.mjs'
+} from './lib/simulated-llm.mts'
+import { writeOutputs, writeSummary } from './lib/upload.mts'
 
 /** user-script 为 {owner}/{repo}/{path}@{ref} 时从 GitHub raw 拉取脚本内容。 */
-async function resolveUserScript(source, token, log) {
+async function resolveUserScript(source: string, token: string, log: (line: string) => void) {
   const match = /^(?<owner>[^/\s]+)\/(?<repo>[^/\s]+)\/(?<path>.+)@(?<ref>[^@\s]+)$/u.exec(source.trim())
   if (match?.groups === undefined || source.includes('\n')) return source
   const { owner, repo, path, ref } = match.groups
@@ -127,7 +127,7 @@ async function main() {
     // ---------- 模拟 LLM + settings ----------
     const protocols = parseSimulatedLlmSpec(inputs.simulatedLlm)
     const { dshLocale } = mapLocale(inputs.lang)
-    const sections = {}
+    const sections: Record<string, unknown> = {}
     if (dshLocale !== undefined) sections.locale = { preference: dshLocale }
     if (protocols !== null) {
       sim = await startSimulatedLlm({ protocols, log: simLog })

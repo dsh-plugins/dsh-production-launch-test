@@ -13,7 +13,7 @@ import { spawn } from 'node:child_process'
  *   redact?: string[], allowFailure?: boolean }} [options]
  * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
  */
-export function run(command, args, options = {}) {
+export function run(command: string, args: string[], options: { cwd?: string, env?: NodeJS.ProcessEnv, log?: (line: string) => void,   redact?: string[], allowFailure?: boolean } = {}): Promise<{ code: number, stdout: string, stderr: string }> {
   const { cwd, env, log = () => {}, redact = [], allowFailure = false } = options
   const displayArgs = args.map(arg => redact.reduce((acc, secret) =>
     secret === '' ? acc : acc.split(secret).join('***'), arg))
@@ -70,7 +70,7 @@ export function run(command, args, options = {}) {
 }
 
 /** Windows 上 node/npm/pnpm 的 .cmd 入口需要走 cmd 解析。 */
-export function binOf(name) {
+export function binOf(name: string) {
   return process.platform === 'win32' ? `${name}.cmd` : name
 }
 
@@ -79,7 +79,7 @@ export function binOf(name) {
  * corepack 不可用（shim 缺失 / node>=25 移除）时退回 npm 全局安装。
  * @param {(line: string) => void} log
  */
-export async function ensurePnpm(log) {
+export async function ensurePnpm(log: (line: string) => void) {
   const probe = await run(binOf('pnpm'), ['--version'], { log, allowFailure: true })
   if (probe.code === 0) {
     log(`pnpm ${probe.stdout.trim()} 就绪`)
@@ -106,21 +106,21 @@ export async function ensurePnpm(log) {
  * @param {import('node:child_process').ChildProcess} child
  * @param {(line: string) => void} [log]
  */
-export async function killTree(child, log = () => {}) {
+export async function killTree(child: import('node:child_process').ChildProcess, log: (line: string) => void = () => {}) {
   if (child.exitCode !== null || child.killed) return
   try {
     if (process.platform === 'win32') {
       await run('taskkill', ['/pid', String(child.pid), '/T', '/F'], { log, allowFailure: true })
     } else {
       try {
-        process.kill(-child.pid, 'SIGTERM')
+        process.kill(-child.pid!, 'SIGTERM')
       } catch {
         child.kill('SIGTERM')
       }
-      await new Promise(resolve => {
+      await new Promise<void>(resolve => {
         const timer = setTimeout(() => {
           try {
-            process.kill(-child.pid, 'SIGKILL')
+            process.kill(-child.pid!, 'SIGKILL')
           } catch { /* 已退出 */ }
           resolve()
         }, 5000)

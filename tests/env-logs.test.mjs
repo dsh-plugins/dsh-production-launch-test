@@ -3,8 +3,8 @@ import { describe, it } from 'node:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { detectDesktop, mapLocale, nodeVersionOk, readInputs } from '../scripts/lib/env.mjs'
-import { createLogger, scanLogs } from '../scripts/lib/logs.mjs'
+import { detectDesktop, mapLocale, nodeVersionOk, readInputs } from '../scripts/lib/env.mts'
+import { createLogger, scanLogs } from '../scripts/lib/logs.mts'
 
 describe('detectDesktop', () => {
   it('win32 / darwin 直过', () => {

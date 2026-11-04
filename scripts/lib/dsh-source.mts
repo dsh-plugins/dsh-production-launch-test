@@ -11,14 +11,14 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
-import { binOf, run } from './proc.mjs'
+import { binOf, run } from './proc.mts'
 
 /** DSH 官方仓库与 release tag 前缀。 */
 export const DSH_REPO = 'deepseek-ai/deepseek-harness'
 export const DSH_TAG_PREFIX = 'dsh-v'
 
 /** dist tgz 文件名 → 包名（deepseek-ai-dsh-web-0.1.2-alpha.1.tgz → @deepseek-ai/dsh-web）。 */
-export function tgzToPackageName(filename) {
+export function tgzToPackageName(filename: string) {
   const match = /^deepseek-ai-(?<name>.+)-(?<version>\d+\.\d+\.\d+-?[\w.]*)?\.tgz$/u.exec(filename)
   if (match?.groups === undefined || match.groups.version === undefined) return null
   return `@deepseek-ai/${match.groups.name}`
@@ -29,7 +29,7 @@ export function tgzToPackageName(filename) {
  * @param {{ version: string, rootDir: string, token?: string,
  *   log: (line: string) => void }} options
  */
-export async function installDshFromSource({ version, rootDir, token = '', log }) {
+export async function installDshFromSource({ version, rootDir, token = '', log }: { version: string, rootDir: string, token?: string,   log: (line: string) => void }) {
   const versionDir = join(rootDir, 'versions', `src-${version}`)
   const bin = join(versionDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
   if (existsSync(bin)) {
@@ -40,7 +40,7 @@ export async function installDshFromSource({ version, rootDir, token = '', log }
 
   const tgzs = (await readdir(distDir)).filter(name => name.endsWith('.tgz'))
   if (tgzs.length === 0) throw new Error(`${distDir} 下没有 *.tgz 产物`)
-  const deps = {}
+  const deps: Record<string, string> = {}
   for (const tgz of tgzs) {
     const name = tgzToPackageName(tgz)
     if (name === null) {
@@ -75,7 +75,7 @@ export async function installDshFromSource({ version, rootDir, token = '', log }
  * @param {(line: string) => void} log
  * @returns {Promise<string>} dist/npm 目录
  */
-export async function buildDistFromGithub(spec, rootDir, token, log) {
+export async function buildDistFromGithub(spec: string, rootDir: string, token: string, log: (line: string) => void): Promise<string> {
   const match = /^(?<repo>[\w.-]+\/[\w.-]+)@(?<ref>[^@\s]+)$/u.exec(spec)
   if (match?.groups === undefined) {
     throw new Error(`源码构建规格应为 <owner>/<repo>@<ref>：${spec}`)
@@ -138,7 +138,7 @@ export async function buildDistFromGithub(spec, rootDir, token, log) {
  *    误判为 rmt 远程主机语法（--force-local 版本支持不一，本机 3.8.4 反而不支持）→
  *    改为以包所在目录为 cwd、传 basename。
  */
-function patchWindowsSourceBuild(srcDir, log) {
+function patchWindowsSourceBuild(srcDir: string, log: (line: string) => void) {
   const patched = []
 
   const processFile = join(srcDir, 'scripts', 'release', 'process.ts')
@@ -184,7 +184,7 @@ function patchWindowsSourceBuild(srcDir, log) {
  * dsh-sdk-client 等包的内部依赖会去 registry 找 npm 上不存在的版本）；
  * allowBuilds 白名单同时给纯包名与 file: 限定符两种键。
  */
-function pnpmWorkspaceYamlSource(deps, versionDir) {
+function pnpmWorkspaceYamlSource(deps: Record<string, string>, versionDir: string) {
   const overrideLines = Object.entries(deps)
     .map(([name, spec]) => `  "${name}": "${spec}"`)
     .join('\n')

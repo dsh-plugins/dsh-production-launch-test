@@ -1,3 +1,11 @@
+export type ArtifactSpec = { kind: 'artifact', name: string, raw: string }
+export type GithubSpec = { kind: 'github', owner: string, repo: string, path?: string,
+  commit?: string, tag?: string, raw: string }
+export type NpmSpec = { kind: 'npm', name: string, packageName: string, raw: string }
+export type PathSpec = { kind: 'path', path: string, raw: string }
+export type PluginSpec = ArtifactSpec | GithubSpec | NpmSpec | PathSpec
+type MaterializeOptions = { workDir: string, token?: string, log?: (line: string) => void }
+
 /**
  * plugins — 插件规格解析与物化。
  *
@@ -21,22 +29,15 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { downloadArtifactByName } from './artifact-store.mjs'
-import { binOf, run } from './proc.mjs'
-
-/** @typedef {{ kind: 'artifact', name: string, raw: string }} ArtifactSpec */
-/** @typedef {{ kind: 'github', owner: string, repo: string, path?: string,
- *   commit?: string, tag?: string, raw: string }} GithubSpec */
-/** @typedef {{ kind: 'npm', name: string, packageName: string, raw: string }} NpmSpec */
-/** @typedef {{ kind: 'path', path: string, raw: string }} PathSpec */
-/** @typedef {ArtifactSpec | GithubSpec | NpmSpec | PathSpec} PluginSpec */
+import { downloadArtifactByName } from './artifact-store.mts'
+import { binOf, run } from './proc.mts'
 
 /**
  * 解析 plugins 多行输入为规格数组。
  * @param {string} input
  * @returns {PluginSpec[]}
  */
-export function parsePluginsInput(input) {
+export function parsePluginsInput(input: string): PluginSpec[] {
   const specs = []
   for (const lineRaw of String(input ?? '').split(/\r?\n/u)) {
     const line = lineRaw.trim()
@@ -51,7 +52,7 @@ export function parsePluginsInput(input) {
  * @param {string} line
  * @returns {PluginSpec}
  */
-export function parsePluginSpec(line) {
+export function parsePluginSpec(line: string): PluginSpec {
   if (line.startsWith('artifact:')) {
     const name = line.slice('artifact:'.length).trim()
     if (name === '') throw new Error(`插件规格非法：${line}（artifact: 后缺少名称）`)
@@ -74,7 +75,7 @@ export function parsePluginSpec(line) {
 }
 
 /** 形态判断：.tgz 文件、./ ../ ~/ 前缀、含反斜杠、或非 scoped 的 / 分隔。 */
-function isPathLike(text) {
+function isPathLike(text: string) {
   if (text.includes('://')) return false // URL 一律拒绝
   return /\.tgz$/u.test(text)
     || /^(?:\.{1,2}|~)[/\\]/u.test(text)
@@ -84,7 +85,7 @@ function isPathLike(text) {
 }
 
 /** npm 规格 → 纯包名（剥离 @version；scoped 名的前导 @ 保留）。 */
-export function npmPackageName(spec) {
+export function npmPackageName(spec: string) {
   const at = spec.indexOf('@', 1) // 跳过 scoped 的前导 @
   return at === -1 ? spec : spec.slice(0, at)
 }
@@ -95,14 +96,14 @@ export function npmPackageName(spec) {
  * @param {string} line
  * @returns {GithubSpec}
  */
-function parseGithubSpec(line) {
+function parseGithubSpec(line: string): GithubSpec {
   const rest = line.slice('github:'.length)
   const match = /^(?<repo>[\w.-]+\/[\w.-]+)(?<suffix>.*)$/u.exec(rest)
   if (match?.groups === undefined) {
     throw new Error(`github 插件规格非法：${line}（应为 github:user/repo…）`)
   }
   const [owner, repo] = match.groups.repo.split('/')
-  const spec = { kind: 'github', owner, repo, raw: line }
+  const spec: GithubSpec = { kind: 'github', owner, repo, raw: line }
   let suffix = match.groups.suffix
   if (suffix === '') return spec
 
@@ -143,7 +144,7 @@ function parseGithubSpec(line) {
  * @param {{ workDir: string, token?: string, log?: (line: string) => void }} options
  * @returns {Promise<{ target: string, display: string, packageName?: string }>}
  */
-export async function materializePlugin(spec, options) {
+export async function materializePlugin(spec: PluginSpec, options: { workDir: string, token?: string, log?: (line: string) => void }): Promise<{ target: string, display: string, packageName?: string }> {
   switch (spec.kind) {
     case 'npm':
       return { target: spec.name, display: spec.name, packageName: spec.packageName }
@@ -162,7 +163,7 @@ export async function materializePlugin(spec, options) {
  * 物化本地路径规格：path/to/plugin.tgz 直接引用；path/to/plugin 目录打包。
  * 相对路径基于 action 运行时的 cwd（调用方 workspace）。
  */
-async function materializePath(spec, { workDir, log = () => {} }) {
+async function materializePath(spec: PathSpec, { workDir, log = () => {} }: MaterializeOptions) {
   const abs = resolve(spec.path)
   if (spec.path.endsWith('.tgz')) {
     if (!existsSync(abs)) throw new Error(`path 插件 tgz 不存在：${abs}`)
@@ -175,7 +176,7 @@ async function materializePath(spec, { workDir, log = () => {} }) {
   return { target, display: spec.path, packageName }
 }
 
-async function materializeGithub(spec, { workDir, token, log = () => {} }) {
+async function materializeGithub(spec: GithubSpec, { workDir, token, log = () => {} }: MaterializeOptions) {
   const { owner, repo, path: subPath, commit, tag } = spec
   const ref = commit ?? (tag !== undefined ? `refs/tags/${tag}` : undefined)
   const displaySuffix = [
@@ -229,7 +230,7 @@ async function materializeGithub(spec, { workDir, token, log = () => {} }) {
 }
 
 /** 对含 package.json 的目录执行 pnpm pack（失败回退 npm pack），返回 tgz 路径与包名。 */
-async function packDirectory(dir, outDir, log) {
+async function packDirectory(dir: string, outDir: string, log: (line: string) => void) {
   await mkdir(outDir, { recursive: true })
   let packed = await run(binOf('pnpm'), ['pack', '--pack-destination', outDir],
     { cwd: dir, log, allowFailure: true })
@@ -249,7 +250,7 @@ async function packDirectory(dir, outDir, log) {
   return { target: resolve(join(outDir, tgz)), packageName: pkg.name }
 }
 
-async function materializeArtifact(spec, { workDir, token = '', log = () => {} }) {
+async function materializeArtifact(spec: ArtifactSpec, { workDir, token = '', log = () => {} }: MaterializeOptions) {
   const dest = join(workDir, `artifact-${shortHash(spec.raw)}`)
   await mkdir(dest, { recursive: true })
   await downloadArtifactByName({ name: spec.name, destDir: dest, token, log })
@@ -274,7 +275,7 @@ async function materializeArtifact(spec, { workDir, token = '', log = () => {} }
   throw new Error(`artifact:${spec.name} 中既没有 *.tgz 也没有含 package.json 的目录`)
 }
 
-function shortHash(text) {
+function shortHash(text: string) {
   return createHash('sha256').update(text).digest('hex').slice(0, 12)
 }
 
@@ -283,7 +284,7 @@ function shortHash(text) {
  * @param {string} profileDir
  * @returns {Promise<string[]>}
  */
-export async function readBundles(profileDir) {
+export async function readBundles(profileDir: string): Promise<string[]> {
   const pkg = JSON.parse(await readFile(join(profileDir, 'package.json'), 'utf8'))
   return pkg.dsh?.profile?.bundles ?? []
 }

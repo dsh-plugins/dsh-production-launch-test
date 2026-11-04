@@ -4,7 +4,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, it } from 'node:test'
-import { materializePlugin, parsePluginSpec, parsePluginsInput } from '../scripts/lib/plugins.mjs'
+import { materializePlugin, parsePluginSpec, parsePluginsInput } from '../scripts/lib/plugins.mts'
 
 describe('parsePluginSpec', () => {
   const cases = [

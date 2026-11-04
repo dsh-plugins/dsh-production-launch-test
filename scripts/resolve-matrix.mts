@@ -7,7 +7,7 @@
  *
  * npm 上缺失的版本（GitHub Releases 独占）无需特判：action 会自动源码构建。
  *
- * 用法：node scripts/resolve-matrix.mjs
+ * 用法：node scripts/resolve-matrix.mts
  * 环境变量：GITHUB_TOKEN / GH_TOKEN（GitHub Releases API 鉴权，可选但建议）
  */
 
@@ -19,21 +19,21 @@ import {
   buildMatrix,
   mergeDshVersions,
   pickPluginVersion,
-} from './lib/resolve.mjs'
+} from './lib/resolve.mts'
 
 const MIN_DSH_VERSION = '0.1.0-rc.6'
 
-async function fetchJson(url, headers = {}) {
+async function fetchJson<T>(url: string, headers: Record<string, string> = {}): Promise<T> {
   const response = await fetch(url, { headers: { accept: 'application/json', ...headers } })
   if (!response.ok) throw new Error(`GET ${url} → HTTP ${response.status}`)
   return await response.json()
 }
 
-async function fetchAllReleases(token) {
+async function fetchAllReleases(token: string) {
   const tags = []
-  const headers = token !== '' ? { authorization: `Bearer ${token}` } : {}
+  const headers: Record<string, string> = token !== '' ? { authorization: `Bearer ${token}` } : {}
   for (let page = 1; page <= 10; page += 1) {
-    const releases = await fetchJson(
+    const releases = await fetchJson<{ tag_name: string }[]>(
       `https://api.github.com/repos/${DSH_REPO}/releases?per_page=100&page=${page}`, headers)
     for (const release of releases) tags.push(release.tag_name)
     if (releases.length < 100) break
@@ -44,7 +44,7 @@ async function fetchAllReleases(token) {
 async function main() {
   const token = (process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN ?? '').trim()
 
-  const npmDoc = await fetchJson('https://registry.npmjs.org/@deepseek-ai/dsh',
+  const npmDoc = await fetchJson<{ versions?: Record<string, unknown> }>('https://registry.npmjs.org/@deepseek-ai/dsh',
     { accept: 'application/vnd.npm.install-v1+json' })
   const npmVersions = Object.keys(npmDoc.versions ?? {})
   const releaseTags = await fetchAllReleases(token)
@@ -53,7 +53,7 @@ async function main() {
 
   const pluginSpecs = []
   for (const name of SWEEP_PLUGINS) {
-    const doc = await fetchJson(`https://registry.npmjs.org/@dsh-plugin/${name}`,
+    const doc = await fetchJson<{ "dist-tags"?: { latest?: string, next?: string } }>(`https://registry.npmjs.org/@dsh-plugin/${name}`,
       { accept: 'application/vnd.npm.install-v1+json' })
     const version = pickPluginVersion(doc['dist-tags'] ?? {})
     pluginSpecs.push(`@dsh-plugin/${name}@${version}`)

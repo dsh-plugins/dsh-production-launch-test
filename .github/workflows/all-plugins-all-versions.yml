@@ -30,7 +30,7 @@ jobs:
       - id: resolve
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/resolve-matrix.mjs
+        run: node scripts/resolve-matrix.mts
 
   # 3 OS × 全部 dsh 版本；7 插件装进同一 profile
   test:

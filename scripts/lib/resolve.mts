@@ -1,8 +1,8 @@
 /**
- * resolve — 全量版本矩阵解析的纯逻辑（网络部分在 scripts/resolve-matrix.mjs）。
+ * resolve — 全量版本矩阵解析的纯逻辑（网络部分在 scripts/resolve-matrix.mts）。
  */
 
-import { compareSemver, parseSemver, sortSemver } from './semver.mjs'
+import { compareSemver, parseSemver, sortSemver } from './semver.mts'
 
 /** DSH 官方仓库与 release tag 前缀。 */
 export const DSH_REPO = 'deepseek-ai/deepseek-harness'
@@ -27,7 +27,7 @@ export const SWEEP_PLUGINS = [
  * @param {string} minVersion
  * @returns {string[]}
  */
-export function mergeDshVersions(npmVersions, releaseTags, minVersion) {
+export function mergeDshVersions(npmVersions: string[], releaseTags: string[], minVersion: string): string[] {
   const all = new Set(npmVersions.filter(v => parseSemver(v) !== null))
   for (const tag of releaseTags) {
     if (!tag.startsWith(DSH_TAG_PREFIX)) continue
@@ -42,7 +42,7 @@ export function mergeDshVersions(npmVersions, releaseTags, minVersion) {
  * @param {{ latest?: string, next?: string }} distTags
  * @returns {string}
  */
-export function pickPluginVersion(distTags) {
+export function pickPluginVersion(distTags: { latest?: string, next?: string }): string {
   const { latest, next } = distTags
   if (latest !== undefined && next !== undefined) {
     return compareSemver(latest, next) >= 0 ? latest : next
@@ -53,7 +53,7 @@ export function pickPluginVersion(distTags) {
 }
 
 /** 生成 GitHub Actions matrix 对象。 */
-export function buildMatrix(dshVersions) {
+export function buildMatrix(dshVersions: string[]) {
   return {
     os: ['windows-latest', 'macos-latest', 'ubuntu-latest'],
     dsh: dshVersions,

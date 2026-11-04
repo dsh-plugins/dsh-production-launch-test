@@ -5,7 +5,7 @@ import {
   parseSimulatedLlmSpec,
   providerSettings,
   startSimulatedLlm,
-} from '../scripts/lib/simulated-llm.mjs'
+} from '../scripts/lib/simulated-llm.mts'
 
 describe('parseSimulatedLlmSpec', () => {
   it('false/空 → null', () => {
